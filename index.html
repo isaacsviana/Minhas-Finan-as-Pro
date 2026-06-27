@@ -1,91 +1,111 @@
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Minhas Finanças Pro 2.0</title>
-    <link rel="stylesheet" href="style.css">
-    </head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Minhas Finanças Pro 3.0</title>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
 <body>
-
-    <div class="container">
-        <header>
-            <h1>Minhas Finanças <span>Pro 2.0</span></h1>
-        </header>
-
-        <section class="balance-container">
-            <div class="card income">
-                <h3>Entradas <span>↑</span></h3>
-                <p id="money-plus">R$ 0,00</p>
-            </div>
-            <div class="card expense">
-                <h3>Saídas <span>↓</span></h3>
-                <p id="money-minus">R$ 0,00</p>
-            </div>
-            <div class="card total">
-                <h3>Saldo Total <span>$</span></h3>
-                <p id="balance">R$ 0,00</p>
-            </div>
-        </section>
-
-        <section class="chart-container">
-            <canvas id="expenseChart"></canvas>
-        </section>
-
-        <section class="form-container">
-            <h3>Nova Transação</h3>
-            <form id="form">
-                
-                <div class="form-type-selector">
-                    <input type="radio" id="type-expense" name="trans-type" value="expense" checked>
-                    <label for="type-expense" class="label-expense">Saída</label>
-
-                    <input type="radio" id="type-income" name="trans-type" value="income">
-                    <label for="type-income" class="label-income">Entrada</label>
-                </div>
-
-                <div class="form-group">
-                    <label for="text">Descrição</label>
-                    <input type="text" id="text" placeholder="Ex: Almoço, Salário..." required />
-                </div>
-                
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="amount">Valor (R$)</label>
-                        <input type="number" id="amount" placeholder="0,00" step="0.01" required />
-                    </div>
-                    <div class="form-group">
-                        <label for="date">Data</label>
-                        <input type="date" id="date" required />
-                    </div>
-                </div>
-
-                <div class="form-group">
-                    <label for="category">Categoria</label>
-                    <select id="category" required>
-                        <option value="" disabled selected>Selecione...</option>
-                        <option value="food">🍔 Alimentação</option>
-                        <option value="home">🏠 Moradia</option>
-                        <option value="transport">🚗 Transporte</option>
-                        <option value="leisure">🎮 Lazer/Streaming</option>
-                        <option value="health">💊 Saúde</option>
-                        <option value="salary">💰 Salário/Renda</option>
-                        <option value="other">⚙️ Outros</option>
-                    </select>
-                </div>
-
-                <button class="btn-add">Adicionar Transação</button>
-            </form>
-        </section>
-
-        <section class="history-container">
-             <h3>Histórico Recente</h3>
-             <ul id="list" class="transactions-list">
-                 </ul>
-        </section>
+<div class="app">
+  <header class="header">
+    <div class="header-title">
+      <h1>Minhas Finanças <span>3.0</span></h1>
+      <p id="current-period"></p>
     </div>
-
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="script.js"></script>
+    <button class="btn-export" onclick="exportCSV()">↓ Exportar CSV</button>
+  </header>
+ 
+  <section class="cards">
+    <div class="card income">
+      <div class="card-label">Entradas <span class="icon">↑</span></div>
+      <div class="card-value" id="money-plus">R$ 0,00</div>
+      <div class="card-sub" id="income-count">0 transações</div>
+    </div>
+    <div class="card expense">
+      <div class="card-label">Saídas <span class="icon">↓</span></div>
+      <div class="card-value" id="money-minus">R$ 0,00</div>
+      <div class="card-sub" id="expense-count">0 transações</div>
+    </div>
+    <div class="card balance">
+      <div class="card-label">Saldo <span class="icon">$</span></div>
+      <div class="card-value" id="balance">R$ 0,00</div>
+      <div class="card-sub" id="balance-sub">—</div>
+    </div>
+  </section>
+ 
+  <div class="charts-row">
+    <div class="chart-card">
+      <h3>Gastos por categoria</h3>
+      <div class="chart-wrap"><canvas id="doughnut-chart" role="img" aria-label="Gráfico de gastos por categoria"></canvas></div>
+      <ul class="cat-list" id="cat-list"></ul>
+    </div>
+    <div class="chart-card">
+      <h3>Evolução do saldo</h3>
+      <div class="chart-wrap"><canvas id="line-chart" role="img" aria-label="Gráfico de evolução do saldo"></canvas></div>
+    </div>
+  </div>
+ 
+  <section class="form-card">
+    <h2>Nova transação</h2>
+    <div class="type-toggle">
+      <button class="type-btn active-expense" id="btn-expense" onclick="setType('expense')">⬇ Saída</button>
+      <button class="type-btn" id="btn-income" onclick="setType('income')">⬆ Entrada</button>
+    </div>
+    <div class="form-grid">
+      <div class="form-group"><label>Descrição</label><input type="text" id="text" placeholder="Ex: Almoço, Salário..." required></div>
+      <div class="form-group"><label>Valor (R$)</label><input type="number" id="amount" placeholder="0,00" step="0.01" min="0" required></div>
+      <div class="form-group"><label>Data</label><input type="date" id="date" required></div>
+    </div>
+    <div class="form-group">
+      <label>Categoria</label>
+      <select id="category" required>
+        <option value="" disabled selected>Selecione uma categoria...</option>
+        <option value="food">🍔 Alimentação</option>
+        <option value="home">🏠 Moradia</option>
+        <option value="transport">🚗 Transporte</option>
+        <option value="leisure">🎮 Lazer / Streaming</option>
+        <option value="health">💊 Saúde</option>
+        <option value="salary">💰 Salário / Renda</option>
+        <option value="invest">📈 Investimento</option>
+        <option value="other">⚙️ Outros</option>
+      </select>
+    </div>
+    <button class="btn-add" onclick="addTransaction()">Adicionar transação</button>
+  </section>
+ 
+  <section class="history-card">
+    <div class="history-header">
+      <h2>Histórico</h2>
+      <div class="filter-row">
+        <select class="filter-select" id="filter-type" onchange="renderList()">
+          <option value="all">Todas</option>
+          <option value="income">Entradas</option>
+          <option value="expense">Saídas</option>
+        </select>
+        <select class="filter-select" id="filter-month" onchange="renderList()"></select>
+        <span class="tx-count" id="tx-count"></span>
+      </div>
+    </div>
+    <ul class="list" id="list"></ul>
+  </section>
+</div>
+ 
+<div class="toast" id="toast"></div>
+ 
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <h3>Remover transação?</h3>
+    <p>Essa ação não pode ser desfeita.</p>
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="closeModal()">Cancelar</button>
+      <button class="btn-confirm" id="modal-confirm">Remover</button>
+    </div>
+  </div>
+</div>
+ 
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="script.js"></script>
 </body>
 </html>
