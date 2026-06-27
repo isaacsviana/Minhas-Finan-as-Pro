@@ -1,226 +1,346 @@
-// --- 1. Elementos do DOM ---
-const balanceEl = document.getElementById('balance');
-const money_plusEl = document.getElementById('money-plus');
-const money_minusEl = document.getElementById('money-minus');
-const listEl = document.getElementById('list');
-const form = document.getElementById('form');
-
-// Campos do formulário
-const textInput = document.getElementById('text');
-const amountInput = document.getElementById('amount');
-const dateInput = document.getElementById('date');
-const categoryInput = document.getElementById('category');
-const typeInputs = document.getElementsByName('trans-type'); // Radio buttons
-
-// Canvas do Gráfico
-const chartCtx = document.getElementById('expenseChart').getContext('2d');
-let myChart; // Variável global para o gráfico
-
-// --- 2. Estado da Aplicação (Dados) ---
-// Tenta pegar do localStorage, se não tiver, inicia vazio
-const localStorageTransactions = JSON.parse(localStorage.getItem('transactions'));
-let transactions = localStorage.getItem('transactions') !== null ? localStorageTransactions : [];
-
-// Mapa de emojis para categorias (para usar na lista)
-const categoryIcons = {
-    food: '🍔', home: '🏠', transport: '🚗', leisure: '🎮',
-    health: '💊', salary: '💰', other: '⚙️'
+// --- Mapeamentos ---
+const ICONS = {
+  food: '🍔', home: '🏠', transport: '🚗', leisure: '🎮',
+  health: '💊', salary: '💰', invest: '📈', other: '⚙️'
 };
-
-// Define a data de hoje como padrão no input de data
-dateInput.valueAsDate = new Date();
-
-// --- 3. Funções Principais ---
-
-// Função para gerar ID único
-function generateID() {
-    return Math.floor(Math.random() * 100000000);
+ 
+const CATS = {
+  food: 'Alimentação', home: 'Moradia', transport: 'Transporte',
+  leisure: 'Lazer', health: 'Saúde', salary: 'Salário',
+  invest: 'Investimento', other: 'Outros'
+};
+ 
+const COLORS = ['#8b5cf6', '#10b981', '#f43f5e', '#f59e0b', '#3b82f6', '#ec4899', '#14b8a6', '#f97316'];
+ 
+// --- Estado ---
+let transactions = JSON.parse(localStorage.getItem('transactions_v3') || '[]');
+let currentType = 'expense';
+let deleteId = null;
+let doughnutChart = null;
+let lineChart = null;
+ 
+// --- Inicialização ---
+document.getElementById('date').valueAsDate = new Date();
+document.getElementById('current-period').textContent =
+  new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+ 
+document.getElementById('modal-confirm').onclick = () => {
+  if (deleteId) {
+    transactions = transactions.filter(t => t.id !== deleteId);
+    save();
+    update();
+    showToast('Transação removida.', 'success');
+  }
+  closeModal();
+};
+ 
+buildMonthFilter();
+update();
+ 
+// --- Tipo de Transação ---
+function setType(t) {
+  currentType = t;
+  const be = document.getElementById('btn-expense');
+  const bi = document.getElementById('btn-income');
+  be.className = 'type-btn' + (t === 'expense' ? ' active-expense' : '');
+  bi.className = 'type-btn' + (t === 'income' ? ' active-income' : '');
 }
-
-// Adiciona transação ao DOM (Lista visível)
-function addTransactionDOM(transaction) {
-    const sign = transaction.type === 'expense' ? '-' : '+';
-    const item = document.createElement('li');
-
-    item.classList.add('transaction-item');
-    item.classList.add(transaction.type === 'expense' ? 'minus' : 'plus');
-
-    // Formata moeda
-    const amountFormatted = Math.abs(transaction.amount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-    // Formata data (converte string YYYY-MM-DD para PT-BR)
-    const dateObj = new Date(transaction.date);
-    const dateFormatted = dateObj.toLocaleDateString('pt-BR', {timeZone: 'UTC'});
-    
-    const icon = categoryIcons[transaction.category] || '📝';
-
-    item.innerHTML = `
-        <div class="item-info-group">
-            <span class="category-icon">${icon}</span>
-            <div class="item-text">
-                <h4>${transaction.text}</h4>
-                <span>${dateFormatted} - ${transaction.category.toUpperCase()}</span>
-            </div>
+ 
+// --- Formatação ---
+function fmt(n) {
+  return Math.abs(n).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+ 
+// --- Adicionar Transação ---
+function addTransaction() {
+  const text = document.getElementById('text').value.trim();
+  const amount = parseFloat(document.getElementById('amount').value);
+  const date = document.getElementById('date').value;
+  const cat = document.getElementById('category').value;
+ 
+  if (!text || !amount || !date || !cat) {
+    showToast('Preencha todos os campos.', 'error');
+    return;
+  }
+  if (amount <= 0) {
+    showToast('Valor deve ser maior que zero.', 'error');
+    return;
+  }
+ 
+  transactions.push({ id: Date.now(), text, amount, date, category: cat, type: currentType });
+  save();
+ 
+  document.getElementById('text').value = '';
+  document.getElementById('amount').value = '';
+  document.getElementById('category').value = '';
+  document.getElementById('text').focus();
+ 
+  showToast('Transação adicionada!', 'success');
+  update();
+}
+ 
+// --- Salvar no LocalStorage ---
+function save() {
+  localStorage.setItem('transactions_v3', JSON.stringify(transactions));
+}
+ 
+// --- Modal de Confirmação ---
+function openModal(id) {
+  deleteId = id;
+  document.getElementById('modal').classList.add('open');
+}
+ 
+function closeModal() {
+  deleteId = null;
+  document.getElementById('modal').classList.remove('open');
+}
+ 
+// --- Toast ---
+function showToast(msg, type = 'success') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show ' + type;
+  setTimeout(() => { t.className = 'toast'; }, 2500);
+}
+ 
+// --- Filtro de Mês ---
+function buildMonthFilter() {
+  const sel = document.getElementById('filter-month');
+  const months = new Set(transactions.map(t => t.date.slice(0, 7)));
+  const now = new Date().toISOString().slice(0, 7);
+  const all = [...months];
+  if (!all.includes(now)) all.unshift(now);
+  all.sort((a, b) => b.localeCompare(a));
+ 
+  sel.innerHTML = '<option value="all">Todos os meses</option>' + all.map(m => {
+    const [y, mo] = m.split('-');
+    const label = new Date(+y, +mo - 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+    return `<option value="${m}"${m === now ? ' selected' : ''}>${label}</option>`;
+  }).join('');
+}
+ 
+// --- Listar Transações Filtradas ---
+function getFiltered() {
+  const type = document.getElementById('filter-type').value;
+  const month = document.getElementById('filter-month').value;
+  return transactions.filter(t => {
+    if (type !== 'all' && t.type !== type) return false;
+    if (month !== 'all' && !t.date.startsWith(month)) return false;
+    return true;
+  }).sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id);
+}
+ 
+function renderList() {
+  const list = document.getElementById('list');
+  const filtered = getFiltered();
+  document.getElementById('tx-count').textContent =
+    filtered.length + ' registro' + (filtered.length !== 1 ? 's' : '');
+ 
+  if (!filtered.length) {
+    list.innerHTML = `
+      <li>
+        <div class="empty">
+          <div class="empty-icon">📭</div>
+          <p>Nenhuma transação encontrada.</p>
         </div>
-        <div style="display:flex; align-items:center;">
-            <span style="font-weight:600">${sign}${amountFormatted}</span>
-            <button class="delete-btn" onclick="removeTransaction(${transaction.id})">×</button>
+      </li>`;
+    return;
+  }
+ 
+  list.innerHTML = filtered.map(t => {
+    const sign = t.type === 'expense' ? '−' : '+';
+    const dateStr = new Date(t.date + 'T00:00:00').toLocaleDateString('pt-BR');
+    return `
+      <li class="tx-item ${t.type === 'expense' ? 'minus' : 'plus'}">
+        <div class="tx-left">
+          <div class="tx-icon">${ICONS[t.category] || '📝'}</div>
+          <div>
+            <div class="tx-desc">${t.text}</div>
+            <div class="tx-meta">${dateStr} · ${CATS[t.category] || t.category}</div>
+          </div>
         </div>
-    `;
-
-    listEl.appendChild(item);
+        <div class="tx-right">
+          <span class="tx-amount ${t.type === 'expense' ? 'minus' : 'plus'}">${sign} ${fmt(t.amount)}</span>
+          <button class="del-btn" onclick="openModal(${t.id})" title="Remover">×</button>
+        </div>
+      </li>`;
+  }).join('');
 }
-
-// Atualiza os valores dos cards e o gráfico
-function updateValues() {
-    // Calcula totais
-    const amounts = transactions.map(transaction => transaction.type === 'expense' ? -transaction.amount : transaction.amount);
-
-    const total = amounts.reduce((acc, item) => (acc += item), 0);
-    
-    const income = amounts
-        .filter(item => item > 0)
-        .reduce((acc, item) => (acc += item), 0);
-
-    const expense = (amounts
-        .filter(item => item < 0)
-        .reduce((acc, item) => (acc += item), 0) * -1);
-
-    // Atualiza DOM
-    balanceEl.innerText = total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-    money_plusEl.innerText = income.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-    money_minusEl.innerText = `-${expense.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`;
-
-    // Atualiza o Gráfico
-    updateChart();
+ 
+// --- Cards de Saldo ---
+function updateCards() {
+  const inc = transactions.filter(t => t.type === 'income').reduce((a, t) => a + t.amount, 0);
+  const exp = transactions.filter(t => t.type === 'expense').reduce((a, t) => a + t.amount, 0);
+  const bal = inc - exp;
+ 
+  document.getElementById('money-plus').textContent = fmt(inc);
+  document.getElementById('money-minus').textContent = fmt(exp);
+ 
+  const balEl = document.getElementById('balance');
+  balEl.textContent = (bal < 0 ? '− ' : '') + fmt(bal);
+  balEl.className = 'card-value' + (bal > 0 ? ' positive' : bal < 0 ? ' negative' : '');
+ 
+  document.getElementById('income-count').textContent =
+    transactions.filter(t => t.type === 'income').length + ' transação(ões)';
+  document.getElementById('expense-count').textContent =
+    transactions.filter(t => t.type === 'expense').length + ' transação(ões)';
+ 
+  const savings = inc > 0 ? ((inc - exp) / inc * 100).toFixed(1) : 0;
+  document.getElementById('balance-sub').textContent =
+    inc > 0 ? `Taxa de poupança: ${savings}%` : 'Adicione entradas para calcular';
 }
-
-// Remove transação
-function removeTransaction(id) {
-    transactions = transactions.filter(transaction => transaction.id !== id);
-    updateLocalStorage();
-    init();
-}
-
-// Adiciona nova transação (Submit do Form)
-function addTransaction(e) {
-    e.preventDefault();
-
-    if (textInput.value.trim() === '' || amountInput.value.trim() === '' || categoryInput.value === '') {
-        alert('Por favor, preencha descrição, valor e categoria.');
-        return;
-    }
-
-    // Descobre qual radio button está marcado
-    let selectedType;
-    for (const radio of typeInputs) {
-        if (radio.checked) {
-            selectedType = radio.value;
-            break;
+ 
+// --- Gráfico de Rosca (Categorias) ---
+function updateDoughnut() {
+  const expenses = transactions.filter(t => t.type === 'expense');
+  const grouped = {};
+  expenses.forEach(t => { grouped[t.category] = (grouped[t.category] || 0) + t.amount; });
+  const keys = Object.keys(grouped);
+  const vals = Object.values(grouped);
+  const total = vals.reduce((a, b) => a + b, 0);
+ 
+  const catList = document.getElementById('cat-list');
+ 
+  if (!keys.length) {
+    catList.innerHTML = '<li class="cat-item" style="color:var(--muted);font-size:0.8rem">Nenhuma despesa ainda.</li>';
+    if (doughnutChart) { doughnutChart.destroy(); doughnutChart = null; }
+    return;
+  }
+ 
+  const sorted = keys
+    .map((k, i) => ({ key: k, val: vals[i], color: COLORS[i % COLORS.length] }))
+    .sort((a, b) => b.val - a.val);
+ 
+  catList.innerHTML = sorted.map(s => `
+    <li class="cat-item">
+      <span class="cat-dot" style="background:${s.color}"></span>
+      <span class="cat-name">${CATS[s.key] || s.key}</span>
+      <span class="cat-pct">${(s.val / total * 100).toFixed(0)}%</span>
+      <span class="cat-val">${fmt(s.val)}</span>
+    </li>`).join('');
+ 
+  if (doughnutChart) doughnutChart.destroy();
+  doughnutChart = new Chart(document.getElementById('doughnut-chart'), {
+    type: 'doughnut',
+    data: {
+      labels: sorted.map(s => CATS[s.key]),
+      datasets: [{
+        data: sorted.map(s => s.val),
+        backgroundColor: sorted.map(s => s.color),
+        borderWidth: 2,
+        borderColor: '#18181b',
+        hoverOffset: 8
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: '65%',
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => ' ' + fmt(ctx.raw)
+          }
         }
+      }
     }
-
-    const transaction = {
-        id: generateID(),
-        text: textInput.value,
-        amount: +amountInput.value, // o '+' converte string para número
-        date: dateInput.value,
-        category: categoryInput.value,
-        type: selectedType
-    };
-
-    transactions.push(transaction);
-    addTransactionDOM(transaction);
-    updateValues();
-    updateLocalStorage();
-
-    // Limpa campos, mas mantém a data e o tipo
-    textInput.value = '';
-    amountInput.value = '';
-    categoryInput.value = '';
-    textInput.focus();
+  });
 }
-
-// Atualiza LocalStorage
-function updateLocalStorage() {
-    localStorage.setItem('transactions', JSON.stringify(transactions));
-}
-
-// --- 4. Lógica do Gráfico (Chart.js) ---
-function updateChart() {
-    // 1. Filtrar apenas despesas
-    const expenses = transactions.filter(t => t.type === 'expense');
-
-    // 2. Agrupar despesas por categoria e somar os valores
-    // Resultado esperado: { food: 150, transport: 50 }
-    const groupedExpenses = expenses.reduce((acc, curr) => {
-        acc[curr.category] = (acc[curr.category] || 0) + curr.amount;
-        return acc;
-    }, {});
-
-    // 3. Preparar dados para o Chart.js
-    const labels = Object.keys(groupedExpenses).map(cat => cat.toUpperCase()); // Nomes das categorias
-    const dataPoints = Object.values(groupedExpenses); // Valores somados
-    
-    // Cores para o gráfico (estilo dark)
-    const backgroundColors = ['#f75a68', '#8257e5', '#00b37e', '#e1e1e6', '#FF9F43', '#28C76F'];
-
-    // Se o gráfico já existe, destrua antes de criar um novo (para não sobrepor)
-    if (myChart) {
-        myChart.destroy();
-    }
-
-    // Se não houver despesas, não desenha nada e esconde o container
-    if(expenses.length === 0) {
-        document.querySelector('.chart-container').style.display = 'none';
-        return;
-    } else {
-        document.querySelector('.chart-container').style.display = 'flex';
-    }
-
-    // Cria o novo gráfico
-    myChart = new Chart(chartCtx, {
-        type: 'doughnut', // Tipo "Rosquinha"
-        data: {
-            labels: labels,
-            datasets: [{
-                data: dataPoints,
-                backgroundColor: backgroundColors,
-                borderWidth: 2,
-                borderColor: '#202024', // Cor do fundo do card para "cortar"
-                hoverOffset: 10
-            }]
+ 
+// --- Gráfico de Linha (Evolução do Saldo) ---
+function updateLineChart() {
+  const sorted = [...transactions].sort((a, b) => a.date.localeCompare(b.date));
+  const byDay = {};
+  let running = 0;
+  sorted.forEach(t => {
+    running += t.type === 'income' ? t.amount : -t.amount;
+    byDay[t.date] = running;
+  });
+ 
+  const dates = Object.keys(byDay).sort();
+ 
+  if (dates.length < 2) {
+    if (lineChart) { lineChart.destroy(); lineChart = null; }
+    return;
+  }
+ 
+  if (lineChart) lineChart.destroy();
+  lineChart = new Chart(document.getElementById('line-chart'), {
+    type: 'line',
+    data: {
+      labels: dates.map(d => new Date(d + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })),
+      datasets: [{
+        data: dates.map(d => byDay[d]),
+        borderColor: '#8b5cf6',
+        backgroundColor: 'rgba(139,92,246,0.08)',
+        borderWidth: 2,
+        tension: 0.35,
+        pointRadius: dates.length > 15 ? 0 : 4,
+        pointBackgroundColor: '#8b5cf6',
+        fill: true
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => ' ' + fmt(ctx.raw)
+          }
+        }
+      },
+      scales: {
+        x: {
+          grid: { color: 'rgba(255,255,255,0.04)' },
+          ticks: { color: '#71717a', font: { size: 10, family: 'Poppins' }, maxTicksLimit: 6 }
         },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    position: 'right',
-                    labels: { color: '#e1e1e6', font: { family: 'Poppins' } }
-                },
-                tooltip: {
-                  callbacks: {
-                      label: function(context) {
-                          let label = context.label || '';
-                          if (label) { label += ': '; }
-                          // Formata o valor no tooltip do gráfico
-                          label += context.raw.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-                          return label;
-                      }
-                  }
-                }
-            }
+        y: {
+          grid: { color: 'rgba(255,255,255,0.04)' },
+          ticks: {
+            color: '#71717a',
+            font: { size: 10, family: 'Poppins' },
+            callback: v => fmt(v)
+          }
         }
-    });
+      }
+    }
+  });
 }
-
-// --- 5. Inicialização ---
-function init() {
-    listEl.innerHTML = '';
-    transactions.forEach(addTransactionDOM);
-    updateValues();
+ 
+// --- Exportar CSV ---
+function exportCSV() {
+  if (!transactions.length) {
+    showToast('Nenhuma transação para exportar.', 'error');
+    return;
+  }
+  const rows = [
+    ['Data', 'Descrição', 'Categoria', 'Tipo', 'Valor'],
+    ...transactions
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .map(t => [
+        t.date,
+        t.text,
+        CATS[t.category] || t.category,
+        t.type === 'income' ? 'Entrada' : 'Saída',
+        t.amount.toFixed(2)
+      ])
+  ];
+  const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,\uFEFF' + encodeURIComponent(csv);
+  a.download = 'financas.csv';
+  a.click();
+  showToast('CSV exportado!', 'success');
 }
-
-// Event Listeners
-init();
-form.addEventListener('submit', addTransaction);
+ 
+// --- Atualizar Tudo ---
+function update() {
+  buildMonthFilter();
+  updateCards();
+  updateDoughnut();
+  updateLineChart();
+  renderList();
+}
